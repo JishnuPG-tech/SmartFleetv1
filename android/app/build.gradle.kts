@@ -19,9 +19,23 @@ android {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
         }
         jniLibs {
+            useLegacyPackaging = true
             excludes += "**/libVkLayer_khronos_validation.so"
         }
     }
+        signingConfigs {
+        create("release") {
+            storeFile = file("smartfleet.jks")
+            storePassword = "SmartFleet@2026"
+            keyAlias = "smartfleet"
+            keyPassword = "SmartFleet@2026"
+            enableV1Signing = true
+            enableV2Signing = true
+            enableV3Signing = true
+            enableV4Signing = false
+        }
+    }
+
     defaultConfig {
         // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
         applicationId = "com.smartfleet.app.smartfleet_flutter"
@@ -49,7 +63,7 @@ android {
         release {
             // TODO: Add your own signing config for the release build.
             // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = signingConfigs.getByName("release")
         }
     }
 }

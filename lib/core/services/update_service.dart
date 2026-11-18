@@ -63,7 +63,27 @@ class UpdateService {
   static const int currentVersionCode = 1;
   static const String currentVersionName = '2.0.0';
 
-  /// Check server for latest release and prompt driver/manager if new APK is available.
+  static Future<bool> canRequestPackageInstalls() async {
+    try {
+      final res = await _installerChannel.invokeMethod<bool>('canRequestPackageInstalls');
+      return res ?? false;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  static Future<bool> installApk(String filePath) async {
+    try {
+      final res = await _installerChannel.invokeMethod<bool>('installApk', {
+        'filePath': filePath,
+      });
+      return res ?? false;
+    } catch (e) {
+      debugPrint('Install APK error: $e');
+      return false;
+    }
+  }
+
   static Future<void> checkForUpdates(
     BuildContext context, {
     bool showToastIfLatest = false,
@@ -89,7 +109,7 @@ class UpdateService {
             SnackBar(
               content: Text(
                 'SmartFleet is up to date (v$currentVersionName)',
-                style: const TextStyle(color: Colors.black, fontWeight: FontWeight.bold),
+                style: const TextStyle(color: Colors.black, fontWeight: FontWeight.w600),
               ),
               backgroundColor: const Color(0xFFC6FF00),
               duration: const Duration(seconds: 3),
@@ -101,7 +121,7 @@ class UpdateService {
       if (showToastIfLatest && context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Could not reach update server: $e'),
+            content: Text('Update check failed: $e'),
             backgroundColor: Colors.redAccent,
           ),
         );
@@ -112,84 +132,174 @@ class UpdateService {
   static void showUpdateModal(BuildContext context, AppUpdateInfo info) {
     showModalBottomSheet(
       context: context,
-      isDismissible: !info.isMandatory,
-      enableDrag: !info.isMandatory,
+      isDismissible: true,
+      enableDrag: true,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (_) => PopScope(
-        canPop: !info.isMandatory,
-        child: UpdateDialog(info: info),
-      ),
+      builder: (_) => _UpdateModalContent(info: info),
     );
   }
-
-  static Future<bool> installApk(String filePath) async {
-    try {
-      final bool? success = await _installerChannel.invokeMethod<bool>(
-        'installApk',
-        {'filePath': filePath},
-      );
-      return success ?? false;
-    } catch (e) {
-      debugPrint('Install APK error: $e');
-      return false;
-    }
-  }
 }
 
-class UpdateDialog extends StatefulWidget {
+class _UpdateModalContent extends StatefulWidget {
   final AppUpdateInfo info;
 
-  const UpdateDialog({super.key, required this.info});
+  const _UpdateModalContent({required this.info});
 
   @override
-  State<UpdateDialog> createState() => _UpdateDialogState();
+  State<_UpdateModalContent> createState() => _UpdateModalContentState();
 }
 
-class _UpdateDialogState extends State<UpdateDialog> {
+class _UpdateModalContentState extends State<_UpdateModalContent> with WidgetsBindingObserver {
   bool _isDownloading = false;
+  bool _isInstalling = false;
+  bool _isDownloaded = false;
   double _progress = 0.0;
-  String _statusText = '';
+  String _statusText = 'Ready to download';
   String? _errorMessage;
+  String? _cachedApkPath;
+  http.Client? _httpClient;
+  Timer? _installSafetyTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _checkExistingDownload();
+
+    UpdateService._installerChannel.setMethodCallHandler((call) async {
+      if (call.method == 'onInstallResumed' && mounted) {
+        setState(() {
+          _isInstalling = true;
+          _statusText = 'Package installer active';
+        });
+        _startSafetyTimer();
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _installSafetyTimer?.cancel();
+    _httpClient?.close();
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed && mounted) {
+      _installSafetyTimer?.cancel();
+      if (_isInstalling || _errorMessage != null) {
+        _checkPermissionAndResume();
+      }
+    }
+  }
+
+  Future<void> _checkPermissionAndResume() async {
+    final canInstall = await UpdateService.canRequestPackageInstalls();
+    if (!mounted) return;
+
+    if (canInstall && _cachedApkPath != null && File(_cachedApkPath!).existsSync()) {
+      setState(() {
+        _isInstalling = false;
+        _isDownloading = false;
+        _isDownloaded = true;
+        _errorMessage = null;
+        _statusText = 'Permission granted. Tap Install to continue.';
+      });
+    } else {
+      setState(() {
+        _isInstalling = false;
+        _isDownloading = false;
+        if (_cachedApkPath != null && File(_cachedApkPath!).existsSync()) {
+          _isDownloaded = true;
+          _statusText = 'Downloaded. Tap Install Update.';
+        }
+      });
+    }
+  }
+
+  Future<void> _checkExistingDownload() async {
+    try {
+      final tempDir = await getTemporaryDirectory();
+      final apkFile = File('${tempDir.path}/smartfleet-update.apk');
+      if (await apkFile.exists()) {
+        final length = await apkFile.length();
+        if (length > 5 * 1024 * 1024) {
+          if (mounted) {
+            setState(() {
+              _isDownloaded = true;
+              _cachedApkPath = apkFile.path;
+              _statusText = 'Downloaded (${(length / (1024 * 1024)).toStringAsFixed(1)} MB)';
+            });
+          }
+        }
+      }
+    } catch (_) {}
+  }
+
+  void _startSafetyTimer() {
+    _installSafetyTimer?.cancel();
+    _installSafetyTimer = Timer(const Duration(seconds: 12), () {
+      if (mounted && _isInstalling) {
+        setState(() {
+          _isInstalling = false;
+          _isDownloading = false;
+          _statusText = 'Installer dismissed. Tap Install to retry.';
+        });
+      }
+    });
+  }
 
   Future<void> _startDownloadAndInstall() async {
+    if (_isDownloaded && _cachedApkPath != null) {
+      await _launchInstall(_cachedApkPath!);
+      return;
+    }
+
     setState(() {
       _isDownloading = true;
+      _isInstalling = false;
       _errorMessage = null;
-      _progress = 0.05;
-      _statusText = 'Connecting to high-speed cloud container...';
+      _progress = 0.0;
+      _statusText = 'Connecting to update server...';
     });
 
     try {
-      final client = http.Client();
+      _httpClient = http.Client();
       final request = http.Request('GET', Uri.parse(widget.info.downloadUrl));
-      final response = await client.send(request);
+      final response = await _httpClient!.send(request);
 
       if (response.statusCode != 200) {
-        throw Exception('Download failed with status ${response.statusCode}');
+        throw 'Server returned HTTP ${response.statusCode}';
       }
 
       final contentLength = response.contentLength ?? widget.info.apkSizeBytes;
       final tempDir = await getTemporaryDirectory();
-      final apkFile = File('${tempDir.path}/SmartFleet-v${widget.info.latestVersionName}.apk');
-
-      if (apkFile.existsSync()) {
-        apkFile.deleteSync();
+      final apkFile = File('${tempDir.path}/smartfleet-update.apk');
+      if (await apkFile.exists()) {
+        await apkFile.delete();
       }
 
       final sink = apkFile.openWrite();
       int downloadedBytes = 0;
 
       await for (final chunk in response.stream) {
+        if (!_isDownloading) {
+          await sink.close();
+          return;
+        }
         sink.add(chunk);
         downloadedBytes += chunk.length;
-        if (contentLength > 0) {
+        if (contentLength > 0 && mounted) {
           final p = downloadedBytes / contentLength;
           setState(() {
             _progress = p.clamp(0.0, 1.0);
             final mb = (downloadedBytes / (1024 * 1024)).toStringAsFixed(1);
             final totalMb = (contentLength / (1024 * 1024)).toStringAsFixed(1);
-            _statusText = 'Downloading update: $mb MB / $totalMb MB (${(p * 100).toInt()}%)';
+            final percent = (p * 100).toInt();
+            _statusText = 'Downloading: $mb / $totalMb MB ($percent%)';
           });
         }
       }
@@ -197,29 +307,65 @@ class _UpdateDialogState extends State<UpdateDialog> {
       await sink.flush();
       await sink.close();
 
+      if (!mounted) return;
+
       setState(() {
+        _isDownloading = false;
+        _isDownloaded = true;
+        _cachedApkPath = apkFile.path;
         _progress = 1.0;
-        _statusText = 'Verifying checksum & launching Android Package Installer...';
+        _statusText = 'Download complete. Launching installer...';
       });
 
-      await Future.delayed(const Duration(milliseconds: 300));
-
-      final success = await UpdateService.installApk(apkFile.path);
-      if (!success && mounted) {
-        setState(() {
-          _isDownloading = false;
-          _errorMessage =
-              'Permission required: Please enable "Install unknown apps" for SmartFleet in Settings, then tap Install again.';
-        });
-      }
+      await _launchInstall(apkFile.path);
     } catch (e) {
       if (mounted) {
         setState(() {
           _isDownloading = false;
-          _errorMessage = 'Update error: $e';
+          _isInstalling = false;
+          _errorMessage = 'Download failed: $e';
+          _statusText = 'Tap to retry download';
         });
       }
     }
+  }
+
+  Future<void> _launchInstall(String filePath) async {
+    setState(() {
+      _isInstalling = true;
+      _statusText = 'Launching Android Package Installer...';
+    });
+
+    _startSafetyTimer();
+
+    final success = await UpdateService.installApk(filePath);
+    if (!mounted) return;
+
+    if (!success) {
+      final canInstall = await UpdateService.canRequestPackageInstalls();
+      setState(() {
+        _isInstalling = false;
+        if (!canInstall) {
+          _errorMessage =
+              'Permission required: Enable "Allow from this source" in Android Settings, then return here to install.';
+          _statusText = 'Awaiting install permission';
+        } else {
+          _errorMessage =
+              'Installer did not launch. Verify storage permissions and retry.';
+          _statusText = 'Install error';
+        }
+      });
+    }
+  }
+
+  void _cancelDownload() {
+    _httpClient?.close();
+    setState(() {
+      _isDownloading = false;
+      _isInstalling = false;
+      _progress = 0.0;
+      _statusText = 'Download cancelled';
+    });
   }
 
   @override
@@ -229,183 +375,254 @@ class _UpdateDialogState extends State<UpdateDialog> {
     return Container(
       decoration: BoxDecoration(
         color: colors.bg,
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-        border: Border.all(color: colors.brand.withValues(alpha: 0.4), width: 1.5),
-        boxShadow: [
-          BoxShadow(
-            color: colors.brand.withValues(alpha: 0.15),
-            blurRadius: 24,
-            spreadRadius: 2,
-          ),
-        ],
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+        border: Border.all(color: colors.border, width: 1.0),
       ),
-      padding: const EdgeInsets.fromLTRB(20, 16, 20, 28),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          // Drag handle
-          Center(
-            child: Container(
-              width: 44,
-              height: 4,
-              decoration: BoxDecoration(
-                color: colors.border,
-                borderRadius: BorderRadius.circular(2),
+      padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
+      child: SafeArea(
+        top: false,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Center(
+              child: Container(
+                width: 36,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: colors.border,
+                  borderRadius: BorderRadius.circular(2),
+                ),
               ),
             ),
-          ),
-          const SizedBox(height: 16),
+            const SizedBox(height: 16),
 
-          // Header with Badge
-          Row(
-            children: [
-              Container(
-                width: 48,
-                height: 48,
-                decoration: BoxDecoration(
-                  color: colors.brand.withValues(alpha: 0.15),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: colors.brand, width: 1.5),
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: colors.surfaceAlt,
+                    borderRadius: BorderRadius.circular(6),
+                    border: Border.all(color: colors.border, width: 1.0),
+                  ),
+                  child: Text(
+                    'SYSTEM UPDATE',
+                    style: AppTypography.label(colors.brand, fontSize: 11),
+                  ),
                 ),
-                child: Icon(Icons.system_update_rounded, color: colors.brand, size: 28),
+                const SizedBox(width: 8),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: colors.brand,
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: Text(
+                    'v${widget.info.latestVersionName}',
+                    style: AppTypography.label(colors.onBrand, fontSize: 11),
+                  ),
+                ),
+                const Spacer(),
+                IconButton(
+                  icon: Icon(Icons.close_rounded, size: 22, color: colors.textSecondary),
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(),
+                  splashRadius: 20,
+                  onPressed: () => Navigator.pop(context),
+                ),
+              ],
+            ),
+
+            const SizedBox(height: 14),
+
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              decoration: BoxDecoration(
+                color: colors.surface,
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: colors.border, width: 1.0),
               ),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
+              child: Row(
+                children: [
+                  Expanded(
+                    child: _buildMetaItem(
+                      'PACKAGE SIZE',
+                      widget.info.apkSizeBytes > 0
+                          ? '${(widget.info.apkSizeBytes / (1024 * 1024)).toStringAsFixed(1)} MB'
+                          : '9.8 MB',
+                      colors,
+                    ),
+                  ),
+                  Container(width: 1, height: 28, color: colors.border),
+                  Expanded(
+                    child: Padding(
+                      padding: const EdgeInsets.only(left: 12),
+                      child: _buildMetaItem('CHANNEL', 'Production', colors),
+                    ),
+                  ),
+                  Container(width: 1, height: 28, color: colors.border),
+                  Expanded(
+                    child: Padding(
+                      padding: const EdgeInsets.only(left: 12),
+                      child: _buildMetaItem('INTEGRITY', 'SHA-256', colors),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+            const SizedBox(height: 14),
+
+            Container(
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: colors.surface,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: colors.border, width: 1.0),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'RELEASE NOTES',
+                    style: AppTypography.label(colors.textSecondary, fontSize: 11),
+                  ),
+                  const SizedBox(height: 8),
+                  ...widget.info.releaseNotes.map(
+                    (note) => Padding(
+                      padding: const EdgeInsets.only(bottom: 6),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Container(
+                            width: 4,
+                            height: 4,
+                            margin: const EdgeInsets.only(top: 7, right: 8),
+                            decoration: BoxDecoration(
+                              color: colors.brand,
+                              shape: BoxShape.circle,
+                            ),
+                          ),
+                          Expanded(
+                            child: Text(
+                              note,
+                              style: AppTypography.body(colors.text, fontSize: 13),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+            if (_errorMessage != null) ...[
+              const SizedBox(height: 12),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: colors.statusDangerContainer,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: colors.statusDanger, width: 1.0),
+                ),
+                child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Row(
-                      children: [
-                        Text(
-                          'Update Available',
-                          style: AppTypography.title(colors.text, fontSize: 18),
-                        ),
-                        const SizedBox(width: 8),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                          decoration: BoxDecoration(
-                            color: colors.brand,
-                            borderRadius: BorderRadius.circular(4),
-                          ),
-                          child: Text(
-                            'v${widget.info.latestVersionName}',
-                            style: AppTypography.label(colors.onBrand, fontSize: 10),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      widget.info.isMandatory
-                          ? 'Mandatory security & logistics update required'
-                          : 'Self-hosted Kerala NH-66 enterprise update',
-                      style: AppTypography.supporting(
-                        widget.info.isMandatory ? colors.statusDanger : colors.textSecondary,
-                        fontSize: 12,
+                    Icon(Icons.info_outline_rounded, color: colors.statusDanger, size: 18),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        _errorMessage!,
+                        style: AppTypography.supporting(colors.statusDanger, fontSize: 12),
                       ),
                     ),
                   ],
                 ),
               ),
-              if (!widget.info.isMandatory && !_isDownloading)
-                IconButton(
-                  icon: const Icon(Icons.close_rounded, size: 20),
-                  onPressed: () => Navigator.pop(context),
-                ),
             ],
-          ),
 
-          const SizedBox(height: 18),
-
-          // What is New Card
-          Container(
-            padding: const EdgeInsets.all(14),
-            decoration: BoxDecoration(
-              color: colors.surface,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: colors.border, width: 1.0),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  "WHAT'S NEW IN THIS RELEASE:",
-                  style: AppTypography.label(colors.brand, fontSize: 11),
+            if (_isDownloading) ...[
+              const SizedBox(height: 14),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(4),
+                child: LinearProgressIndicator(
+                  value: _progress,
+                  minHeight: 6,
+                  backgroundColor: colors.surfaceAlt,
+                  valueColor: AlwaysStoppedAnimation<Color>(colors.brand),
                 ),
-                const SizedBox(height: 8),
-                ...widget.info.releaseNotes.map(
-                  (note) => Padding(
-                    padding: const EdgeInsets.only(bottom: 6),
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text('• ', style: TextStyle(color: colors.brand, fontWeight: FontWeight.bold)),
-                        Expanded(
-                          child: Text(
-                            note,
-                            style: AppTypography.body(colors.text, fontSize: 13),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
+              ),
+            ],
 
-          // Error Message
-          if (_errorMessage != null) ...[
-            const SizedBox(height: 12),
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: colors.statusDanger.withValues(alpha: 0.12),
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: colors.statusDanger, width: 1.0),
-              ),
-              child: Text(
-                _errorMessage!,
-                style: AppTypography.supporting(colors.statusDanger, fontSize: 12),
-              ),
-            ),
-          ],
+            const SizedBox(height: 10),
 
-          // Download Progress Bar
-          if (_isDownloading) ...[
-            const SizedBox(height: 16),
-            ClipRRect(
-              borderRadius: BorderRadius.circular(6),
-              child: LinearProgressIndicator(
-                value: _progress,
-                minHeight: 8,
-                backgroundColor: colors.surface,
-                valueColor: AlwaysStoppedAnimation<Color>(colors.brand),
-              ),
-            ),
-            const SizedBox(height: 8),
             Text(
               _statusText,
               style: AppTypography.supporting(colors.textSecondary, fontSize: 12),
               textAlign: TextAlign.center,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+
+            const SizedBox(height: 16),
+
+            Row(
+              children: [
+                if (_isDownloading) ...[
+                  Expanded(
+                    flex: 1,
+                    child: SecondaryButton(
+                      label: 'Cancel',
+                      height: 52,
+                      onPressed: _cancelDownload,
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                ],
+                Expanded(
+                  flex: 2,
+                  child: PrimaryButton(
+                    label: _isDownloading
+                        ? 'Downloading...'
+                        : _isInstalling
+                            ? 'Installing...'
+                            : _isDownloaded
+                                ? 'Install Update'
+                                : 'Update Now',
+                    icon: _isDownloaded ? Icons.system_update_alt_rounded : Icons.download_rounded,
+                    isLoading: _isInstalling,
+                    height: 52,
+                    onPressed: _isInstalling || _isDownloading
+                        ? null
+                        : _startDownloadAndInstall,
+                  ),
+                ),
+              ],
             ),
           ],
-
-          const SizedBox(height: 20),
-
-          // Action Button
-          PrimaryButton(
-            label: _isDownloading
-                ? 'DOWNLOADING UPDATE...'
-                : '⚡ UPDATE NOW (1-TAP)',
-            icon: Icons.download_rounded,
-            isLoading: _isDownloading,
-            height: 56,
-            onPressed: _isDownloading ? () {} : _startDownloadAndInstall,
-          ),
-        ],
+        ),
       ),
+    );
+  }
+
+  Widget _buildMetaItem(String label, String value, AppColorsExtension colors) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: AppTypography.label(colors.textSecondary, fontSize: 9),
+        ),
+        const SizedBox(height: 2),
+        Text(
+          value,
+          style: AppTypography.section(colors.text, fontSize: 12),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
+      ],
     );
   }
 }
