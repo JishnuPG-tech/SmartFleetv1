@@ -218,7 +218,7 @@ class _DriverRegisterScreenState extends State<DriverRegisterScreen> {
             const SizedBox(height: 12),
             _buildField(
               context,
-              isMalayalam ? "ഡ്രൈവിംഗ് ലൈസൻസ് നമ്പർ (HMV)" : "COMMERCIAL DRIVING LICENCE (HMV)",
+              isMalayalam ? "ഡ്രൈവിംഗ് ലൈസൻസ് നമ്പർ (HMV)" : "HMV DRIVING LICENCE",
               _licenseController,
               Icons.badge_rounded,
             ),

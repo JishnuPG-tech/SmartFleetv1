@@ -1,3 +1,4 @@
+import "../../../core/design/components/empty_state.dart";
 import "package:flutter/material.dart";
 import "package:latlong2/latlong.dart";
 import "../../../core/design/tokens/app_colors.dart";
@@ -193,34 +194,40 @@ class _AdminFleetTabState extends State<AdminFleetTab> {
                                   ),
                               ],
                             )
-                          : ListView.builder(
-                              padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
-                              itemCount: trucks.length,
-                              itemBuilder: (context, index) {
-                                final truck = trucks[index];
-                                final driverName = driverMap[truck.assignedDriverId];
+                          : (trucks.isEmpty
+                              ? const EmptyState(
+                                  icon: Icons.local_shipping_outlined,
+                                  title: "No Trucks in Fleet Database",
+                                  subtitle: "Add commercial haulage trucks via the Web Admin Dashboard or backend database.",
+                                )
+                              : ListView.builder(
+                                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+                                  itemCount: trucks.length,
+                                  itemBuilder: (context, index) {
+                                    final truck = trucks[index];
+                                    final driverName = driverMap[truck.assignedDriverId];
 
-                                TruckStatusType effectiveStatus;
-                                if (truck.status == TruckStatus.inWorkshop) {
-                                  effectiveStatus = TruckStatusType.inWorkshop;
-                                } else if (activeTruckPlates.contains(truck.plate) || truck.status == TruckStatus.onTrip) {
-                                  effectiveStatus = TruckStatusType.onTrip;
-                                } else {
-                                  effectiveStatus = TruckStatusType.available;
-                                }
+                                    TruckStatusType effectiveStatus;
+                                    if (truck.status == TruckStatus.inWorkshop) {
+                                      effectiveStatus = TruckStatusType.inWorkshop;
+                                    } else if (activeTruckPlates.contains(truck.plate) || truck.status == TruckStatus.onTrip) {
+                                      effectiveStatus = TruckStatusType.onTrip;
+                                    } else {
+                                      effectiveStatus = TruckStatusType.available;
+                                    }
 
-                                return Padding(
-                                  padding: const EdgeInsets.only(bottom: 8),
-                                  child: TruckCard(
-                                    plate: truck.plate,
-                                    model: truck.model,
-                                    capacityTons: truck.capacityTons.toDouble(),
-                                    status: effectiveStatus,
-                                    driverName: driverName,
-                                  ),
-                                );
-                              },
-                            ),
+                                    return Padding(
+                                      padding: const EdgeInsets.only(bottom: 8),
+                                      child: TruckCard(
+                                        plate: truck.plate,
+                                        model: truck.model,
+                                        capacityTons: truck.capacityTons.toDouble(),
+                                        status: effectiveStatus,
+                                        driverName: driverName,
+                                      ),
+                                    );
+                                  },
+                                )),
                     ),
                   ],
                 );

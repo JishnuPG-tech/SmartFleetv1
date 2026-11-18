@@ -1,3 +1,4 @@
+import "../../../core/design/components/empty_state.dart";
 import "package:flutter/material.dart";
 import "../../../core/design/tokens/app_colors.dart";
 import "../../../core/design/tokens/app_typography.dart";
@@ -120,14 +121,12 @@ class _AdminTripsTabState extends State<AdminTripsTab> {
 
             // TRIPS LIST
             if (filteredTrips.isEmpty)
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: 40),
-                child: Center(
-                  child: Text(
-                    "No trips match your filter",
-                    style: AppTypography.supporting(colors.textSecondary),
-                  ),
-                ),
+              EmptyState(
+                icon: Icons.alt_route_rounded,
+                title: _searchQuery.isNotEmpty ? "No matching trips found" : "No active trips right now",
+                subtitle: _searchQuery.isNotEmpty 
+                    ? "Try adjusting your search keywords or clearing active filters."
+                    : "All freight consignments are cleared or in transit. Create a new trip to dispatch.",
               )
             else
               ...filteredTrips.map((trip) {

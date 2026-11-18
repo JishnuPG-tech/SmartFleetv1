@@ -1,3 +1,4 @@
+import "../../core/services/update_service.dart";
 import "../../core/data/api_client.dart";
 import "package:flutter/material.dart";
 import "../../core/design/tokens/app_colors.dart";
@@ -130,9 +131,42 @@ class SettingsScreen extends StatelessWidget {
                 ),
               ),
 
+              const SizedBox(height: 24),
+
+              // 4. IN-APP UPDATES & OTA
+              Text("System & Updates", style: AppTypography.section(colors.text, fontSize: 16)),
+              const SizedBox(height: 10),
+              Container(
+                decoration: BoxDecoration(
+                  color: colors.surface,
+                  borderRadius: AppSpacing.cardBorderRadius,
+                  border: Border.all(color: colors.border, width: 1.0),
+                ),
+                child: ListTile(
+                  leading: Icon(Icons.system_update_rounded, color: colors.brand, size: 22),
+                  title: Text("Check for Updates", style: AppTypography.section(colors.text, fontSize: 15)),
+                  subtitle: Text("SmartFleet v2.1.0 • Self-Hosted OTA", style: AppTypography.supporting(colors.textSecondary, fontSize: 12)),
+                  trailing: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: colors.brand.withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(6),
+                      border: Border.all(color: colors.brand.withValues(alpha: 0.3)),
+                    ),
+                    child: Text(
+                      "CHECK",
+                      style: AppTypography.label(colors.brand, fontSize: 11),
+                    ),
+                  ),
+                  onTap: () {
+                    UpdateService.checkForUpdates(context, showToastIfLatest: true);
+                  },
+                ),
+              ),
+
               const SizedBox(height: 32),
 
-              // 4. SWITCH ROLE / LOGOUT
+              // 5. SWITCH ROLE / LOGOUT
               SizedBox(
                 height: 48,
                 child: OutlinedButton(

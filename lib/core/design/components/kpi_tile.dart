@@ -59,11 +59,15 @@ class CompactMetricTile extends StatelessWidget {
                 ],
               ),
               const SizedBox(height: 6),
-              Text(
-                label,
-                style: AppTypography.supporting(colors.textSecondary, fontSize: 13),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
+              SizedBox(
+                height: 32,
+                child: Text(
+                  label,
+                  style: AppTypography.supporting(colors.textSecondary, fontSize: 12),
+                  maxLines: 2,
+                  softWrap: true,
+                  overflow: TextOverflow.ellipsis,
+                ),
               ),
             ],
           ),

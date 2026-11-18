@@ -329,7 +329,7 @@ class _RoleSelectScreenState extends State<RoleSelectScreen> {
         ),
         const SizedBox(height: 14),
         SecondaryButton(
-          label: isMalayalam ? "പുതിയ ഡ്രൈവർ രജിസ്ട്രേഷൻ" : "NEW DRIVER? REGISTER VEHICLE & LICENCE",
+          label: isMalayalam ? "പുതിയ ഡ്രൈവർ രജിസ്ട്രേഷൻ" : "REGISTER AS DRIVER",
           icon: Icons.person_add_rounded,
           onPressed: () {
             Navigator.push(
@@ -393,7 +393,7 @@ class _RoleSelectScreenState extends State<RoleSelectScreen> {
         const SizedBox(height: 18),
         Center(
           child: Text(
-            "Verified via Hugging Face Space & Supabase Backend",
+            "SmartFleet Enterprise • 256-Bit SSL Encrypted",
             style: AppTypography.supporting(colors.textSecondary, fontSize: 12),
           ),
         ),

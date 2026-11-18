@@ -1,3 +1,4 @@
+import "../../core/services/update_service.dart";
 import "package:flutter/material.dart";
 import "../../core/design/tokens/app_colors.dart";
 import "../../core/design/tokens/app_typography.dart";
@@ -20,6 +21,18 @@ class AdminMainScreen extends StatefulWidget {
 
 class _AdminMainScreenState extends State<AdminMainScreen> {
   int _currentIndex = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      Future.delayed(const Duration(milliseconds: 1500), () {
+        if (mounted) {
+          UpdateService.checkForUpdates(context);
+        }
+      });
+    });
+  }
 
   void _openCreateTrip(BuildContext context) {
     Navigator.push(

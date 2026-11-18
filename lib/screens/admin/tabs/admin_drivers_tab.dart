@@ -1,3 +1,4 @@
+import "../../../core/design/components/empty_state.dart";
 import "package:flutter/material.dart";
 import "package:url_launcher/url_launcher.dart";
 import "../../../core/design/components/driver_card.dart";
@@ -41,6 +42,14 @@ class AdminDriversTab extends StatelessWidget {
       stream: LocalFleetRepository.instance.watchDrivers(),
       builder: (context, snapshot) {
         final drivers = snapshot.data ?? [];
+
+        if (drivers.isEmpty) {
+          return const EmptyState(
+            icon: Icons.person_outline_rounded,
+            title: "No Registered Drivers",
+            subtitle: "Drivers who onboard via mobile app or the Web Admin Dashboard will appear here.",
+          );
+        }
 
         return ListView.builder(
           padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
