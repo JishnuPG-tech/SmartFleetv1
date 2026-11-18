@@ -25,6 +25,14 @@ class DriverTripTab extends StatefulWidget {
 }
 
 class _DriverTripTabState extends State<DriverTripTab> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      LocalFleetRepository.instance.refresh();
+    });
+  }
+
   void _openGoogleMaps(BuildContext context, String from, String to) async {
     final query = Uri.encodeComponent("$to, Kerala");
     final url = Uri.parse("https://www.google.com/maps/dir/?api=1&destination=$query&travelmode=driving");
@@ -170,61 +178,114 @@ class _DriverTripTabState extends State<DriverTripTab> {
   Widget build(BuildContext context) {
     final colors = context.colors;
     final currentDriver = widget.driver ?? ApiClient.instance.currentDriver;
-    final currentDriverId = currentDriver?.id ?? "b9d42b88-f50f-4651-84a8-f4d4eed6c6c2";
+    final currentDriverId = currentDriver?.id;
+    final currentPlate = (currentDriver?.assignedTruckPlate ?? '').replaceAll(' ', '').toUpperCase();
+    final currentPhoneDigits = (currentDriver?.phone ?? '').replaceAll(RegExp(r'[^0-9]'), '');
+    final currentLast10 = currentPhoneDigits.length >= 10 ? currentPhoneDigits.substring(currentPhoneDigits.length - 10) : currentPhoneDigits;
+    final currentName = (currentDriver?.name ?? '').trim().toLowerCase();
 
     return StreamBuilder<List<Trip>>(
       stream: LocalFleetRepository.instance.watchTrips(),
       builder: (context, snapshot) {
         final trips = snapshot.data ?? [];
         
-        // Find the active trip for this logged in driver
+        // Find the active trip for this logged in driver with multi-factor matching
         final activeTrips = trips.where((t) {
-          final isAssignedToMe = (t.driverId == currentDriverId || t.driverId == "d1" || t.driverId == "driver-1");
-          return isAssignedToMe && t.status != TripStatus.delivered && t.status != TripStatus.failed;
+          if (t.status == TripStatus.delivered || t.status == TripStatus.failed) {
+            return false;
+          }
+
+          // 1. Direct ID match
+          if (currentDriverId != null && t.driverId == currentDriverId) {
+            return true;
+          }
+
+          // 2. Default/seed driver aliases
+          if ((t.driverId == 'd1' || t.driverId == 'driver-1') && (currentDriverId == null || currentDriverId == 'd1' || currentDriverId.contains('b9d42b88'))) {
+            return true;
+          }
+          if (t.driverId.contains('b9d42b88') && (currentDriverId == 'd1' || currentDriverId == 'driver-1')) {
+            return true;
+          }
+
+          // 3. Truck plate match (Driver is assigned to this specific truck)
+          final tripPlate = t.truckPlate.replaceAll(' ', '').toUpperCase();
+          if (currentPlate.isNotEmpty && tripPlate.isNotEmpty && currentPlate == tripPlate) {
+            return true;
+          }
+
+          // 4. Match against loaded fleet drivers by phone or name
+          for (final d in LocalFleetRepository.instance.currentDrivers) {
+            if (d.id == t.driverId) {
+              final dPhoneDigits = d.phone.replaceAll(RegExp(r'[^0-9]'), '');
+              if (currentLast10.isNotEmpty && dPhoneDigits.endsWith(currentLast10)) {
+                return true;
+              }
+              if (currentName.isNotEmpty && d.name.trim().toLowerCase() == currentName) {
+                return true;
+              }
+              if (currentPlate.isNotEmpty && d.assignedTruckPlate.replaceAll(' ', '').toUpperCase() == currentPlate) {
+                return true;
+              }
+            }
+          }
+
+          return false;
         }).toList();
 
         // 1. STANDBY / NO ACTIVE TRIP
         if (activeTrips.isEmpty) {
-          return Center(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 24),
-              child: Container(
-                padding: const EdgeInsets.all(24),
-                decoration: BoxDecoration(
-                  color: colors.surface,
-                  borderRadius: AppSpacing.cardBorderRadius,
-                  border: Border.all(color: colors.border, width: 1.0),
-                ),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(16),
+          return RefreshIndicator(
+            color: colors.brand,
+            backgroundColor: colors.surface,
+            onRefresh: () => LocalFleetRepository.instance.refresh(),
+            child: SingleChildScrollView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              child: SizedBox(
+                height: MediaQuery.of(context).size.height * 0.75,
+                child: Center(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 24),
+                    child: Container(
+                      padding: const EdgeInsets.all(24),
                       decoration: BoxDecoration(
-                        color: colors.brand.withValues(alpha: 0.15),
-                        shape: BoxShape.circle,
+                        color: colors.surface,
+                        borderRadius: AppSpacing.cardBorderRadius,
+                        border: Border.all(color: colors.border, width: 1.0),
                       ),
-                      child: Icon(Icons.local_shipping_outlined, color: colors.brand, size: 36),
-                    ),
-                    const SizedBox(height: 16),
-                    Text(
-                      "Ready for Dispatch",
-                      style: AppTypography.title(colors.text, fontSize: 18),
-                    ),
-                    const SizedBox(height: 6),
-                    Text(
-                      "${currentDriver?.name ?? 'Suresh Kumar'} · ${currentDriver?.assignedTruckPlate ?? 'KL 11 AB 1234'}",
-                      style: AppTypography.supporting(colors.brand, fontSize: 14).copyWith(
-                        fontWeight: FontWeight.w600,
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(16),
+                            decoration: BoxDecoration(
+                              color: colors.brand.withValues(alpha: 0.15),
+                              shape: BoxShape.circle,
+                            ),
+                            child: Icon(Icons.local_shipping_outlined, color: colors.brand, size: 36),
+                          ),
+                          const SizedBox(height: 16),
+                          Text(
+                            "Ready for Dispatch",
+                            style: AppTypography.title(colors.text, fontSize: 18),
+                          ),
+                          const SizedBox(height: 6),
+                          Text(
+                            "${currentDriver?.name ?? 'Suresh Kumar'} · ${currentDriver?.assignedTruckPlate ?? 'KL 11 AB 1234'}",
+                            style: AppTypography.supporting(colors.brand, fontSize: 14).copyWith(
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            "No loads assigned right now. Pull down to refresh or standby. New trip tickets will pop up here instantly.",
+                            textAlign: TextAlign.center,
+                            style: AppTypography.supporting(colors.textSecondary, fontSize: 13),
+                          ),
+                        ],
                       ),
                     ),
-                    const SizedBox(height: 8),
-                    Text(
-                      "No loads assigned right now. You are marked available on the dispatch board. New trip tickets will pop up here instantly.",
-                      textAlign: TextAlign.center,
-                      style: AppTypography.supporting(colors.textSecondary, fontSize: 13),
-                    ),
-                  ],
+                  ),
                 ),
               ),
             ),
@@ -241,7 +302,11 @@ class _DriverTripTabState extends State<DriverTripTab> {
         final dest = LatLng(11.2588, 75.7804);
         final truckPos = isRunning ? LatLng(10.5276, 76.2144) : origin;
 
-        return ListView(
+        return RefreshIndicator(
+          color: colors.brand,
+          backgroundColor: colors.surface,
+          onRefresh: () => LocalFleetRepository.instance.refresh(),
+          child: ListView(
           padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
           children: [
             // TOP STATUS TICKET CARD (Minimal & compact)
@@ -528,7 +593,8 @@ class _DriverTripTabState extends State<DriverTripTab> {
               ),
             ],
           ],
-        );
+        ),
+      );
       },
     );
   }

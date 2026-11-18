@@ -83,6 +83,10 @@ class LocalFleetRepository implements FleetRepository {
   final _driversController = StreamController<List<Driver>>.broadcast();
   final _trucksController = StreamController<List<Truck>>.broadcast();
 
+  List<Driver> get currentDrivers => List.unmodifiable(_drivers);
+  List<Trip> get currentTrips => List.unmodifiable(_trips);
+  List<Truck> get currentTrucks => List.unmodifiable(_trucks);
+
   bool _isInitialized = false;
 
   Future<void> _init() async {
@@ -379,15 +383,30 @@ class LocalFleetRepository implements FleetRepository {
     await _saveToDisk();
     _notifyAll();
 
-    // Post to live backend asynchronously
-    unawaited(_apiClient.createTrip(
-      from: from,
-      to: to,
-      cargo: cargo,
-      weightTons: weightTons,
-      driverId: driverId,
-      truckPlate: truckPlate,
-    ));
+    // Post to live backend and synchronize exact server ID
+    try {
+      final remoteTrip = await _apiClient.createTrip(
+        from: from,
+        to: to,
+        cargo: cargo,
+        weightTons: weightTons,
+        driverId: driverId,
+        truckPlate: truckPlate,
+      );
+      if (remoteTrip != null) {
+        final idx = _trips.indexWhere((t) => t.id == newTrip.id);
+        if (idx != -1) {
+          _trips[idx] = remoteTrip;
+        } else {
+          _trips.insert(0, remoteTrip);
+        }
+        await _saveToDisk();
+        _notifyAll();
+        return remoteTrip;
+      }
+    } catch (e) {
+      debugPrint('Remote trip creation sync failed: $e');
+    }
 
     return newTrip;
   }

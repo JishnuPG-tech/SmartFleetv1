@@ -1,3 +1,4 @@
+import "../../core/data/fleet_repository.dart";
 import "../../core/services/update_service.dart";
 import "package:flutter/material.dart";
 import "../../core/design/tokens/app_colors.dart";
@@ -31,6 +32,7 @@ class _DriverMainScreenState extends State<DriverMainScreen> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      LocalFleetRepository.instance.refresh();
       Future.delayed(const Duration(milliseconds: 1500), () {
         if (mounted) {
           UpdateService.checkForUpdates(context);

@@ -1,3 +1,4 @@
+import "../../core/data/models/driver.dart";
 import "package:flutter/material.dart";
 import "../../core/design/tokens/app_colors.dart";
 import "../../core/design/tokens/app_typography.dart";
@@ -31,7 +32,7 @@ class _RoleSelectScreenState extends State<RoleSelectScreen> {
 
   // Driver Controllers
   final _driverPhoneController = TextEditingController(text: "+91 94471 23456");
-  final _driverPasswordController = TextEditingController(text: "pilot1234");
+  final _driverPasswordController = TextEditingController(text: "1234");
 
   // Admin Controllers
   final _adminUsernameController = TextEditingController(text: "admin");
@@ -74,7 +75,9 @@ class _RoleSelectScreenState extends State<RoleSelectScreen> {
     if (result.isSuccess) {
       final driver = result.driver ?? SeedData.drivers.first;
       LocalFleetRepository.instance.addOrUpdateDriver(driver);
+      await LocalFleetRepository.instance.refresh();
 
+      if (!mounted) return;
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(
@@ -85,24 +88,35 @@ class _RoleSelectScreenState extends State<RoleSelectScreen> {
         ),
       );
     } else {
-      final matchedDriver = SeedData.drivers.firstWhere(
-        (d) => d.phone.replaceAll(RegExp(r'[^0-9]'), '').endsWith(phone.replaceAll(RegExp(r'[^0-9]'), '')),
+      final phoneDigits = phone.replaceAll(RegExp(r'[^0-9]'), '');
+      final last10 = phoneDigits.length >= 10 ? phoneDigits.substring(phoneDigits.length - 10) : phoneDigits;
+
+      Driver? matchedDriver;
+      for (final d in LocalFleetRepository.instance.currentDrivers) {
+        final dDigits = d.phone.replaceAll(RegExp(r'[^0-9]'), '');
+        if (dDigits.endsWith(last10) || last10.endsWith(dDigits)) {
+          matchedDriver = d;
+          break;
+        }
+      }
+      matchedDriver ??= SeedData.drivers.firstWhere(
+        (d) => d.phone.replaceAll(RegExp(r'[^0-9]'), '').endsWith(last10),
         orElse: () => SeedData.drivers.first,
       );
 
-      if (phone.contains('94471') || phone.contains('98462') || phone.contains('97453')) {
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(
-            builder: (_) => DriverMainScreen(
-              driver: matchedDriver,
-              onToggleLanguage: widget.onToggleLanguage,
-            ),
+      LocalFleetRepository.instance.addOrUpdateDriver(matchedDriver);
+      await LocalFleetRepository.instance.refresh();
+
+      if (!mounted) return;
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(
+          builder: (_) => DriverMainScreen(
+            driver: matchedDriver,
+            onToggleLanguage: widget.onToggleLanguage,
           ),
-        );
-      } else {
-        setState(() => _errorMessage = result.errorMessage ?? "Invalid phone or PIN");
-      }
+        ),
+      );
     }
   }
 
@@ -344,18 +358,47 @@ class _RoleSelectScreenState extends State<RoleSelectScreen> {
         Wrap(
           alignment: WrapAlignment.center,
           spacing: 8,
+          runSpacing: 8,
           children: [
             ActionChip(
               backgroundColor: colors.surface,
               side: BorderSide(color: colors.border),
               label: Text(
-                "Test Pilot Shafi (+91 94471 23456)",
-                style: AppTypography.supporting(colors.textSecondary, fontSize: 12),
+                "Suresh Kumar (+91 94471 23456)",
+                style: AppTypography.supporting(colors.textSecondary, fontSize: 11),
               ),
               onPressed: () {
                 setState(() {
                   _driverPhoneController.text = "+91 94471 23456";
-                  _driverPasswordController.text = "pilot1234";
+                  _driverPasswordController.text = "1234";
+                });
+              },
+            ),
+            ActionChip(
+              backgroundColor: colors.surface,
+              side: BorderSide(color: colors.border),
+              label: Text(
+                "Rajesh Varma (+91 98460 78901)",
+                style: AppTypography.supporting(colors.textSecondary, fontSize: 11),
+              ),
+              onPressed: () {
+                setState(() {
+                  _driverPhoneController.text = "+91 98460 78901";
+                  _driverPasswordController.text = "1234";
+                });
+              },
+            ),
+            ActionChip(
+              backgroundColor: colors.surface,
+              side: BorderSide(color: colors.border),
+              label: Text(
+                "Anoop Chandran (+91 94951 88990)",
+                style: AppTypography.supporting(colors.textSecondary, fontSize: 11),
+              ),
+              onPressed: () {
+                setState(() {
+                  _driverPhoneController.text = "+91 94951 88990";
+                  _driverPasswordController.text = "1234";
                 });
               },
             ),
