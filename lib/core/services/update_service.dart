@@ -176,6 +176,13 @@ class _UpdateModalContentState extends State<_UpdateModalContent> with WidgetsBi
         _startSafetyTimer();
       }
     });
+
+    // AUTOMATIC DOWNLOAD & INSTALL: Start downloading immediately without waiting for extra click
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!_isDownloaded && !_isDownloading) {
+        _startDownloadAndInstall();
+      }
+    });
   }
 
   @override
@@ -202,12 +209,14 @@ class _UpdateModalContentState extends State<_UpdateModalContent> with WidgetsBi
 
     if (canInstall && _cachedApkPath != null && File(_cachedApkPath!).existsSync()) {
       setState(() {
-        _isInstalling = false;
+        _isInstalling = true;
         _isDownloading = false;
         _isDownloaded = true;
         _errorMessage = null;
-        _statusText = 'Permission granted. Tap Install to continue.';
+        _statusText = 'Permission verified. Launching installer...';
       });
+      // Automatically launch the installer without requiring the user to tap Install again!
+      await _launchInstall(_cachedApkPath!);
     } else {
       setState(() {
         _isInstalling = false;

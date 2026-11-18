@@ -1,6 +1,7 @@
 package com.smartfleet.app.smartfleet_flutter
 
 import android.app.Activity
+import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
@@ -14,8 +15,20 @@ import java.io.File
 class MainActivity : FlutterActivity() {
     private val CHANNEL = "com.smartfleet.app/installer"
     private val REQUEST_INSTALL_PERMISSION = 8801
-    private var pendingApkPath: String? = null
+    private val PREFS_NAME = "smartfleet_ota_prefs"
+    private val KEY_PENDING_APK = "pending_apk_path"
+
     private var methodChannel: MethodChannel? = null
+
+    private fun savePendingApk(path: String?) {
+        val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        prefs.edit().putString(KEY_PENDING_APK, path).apply()
+    }
+
+    private fun getPendingApk(): String? {
+        val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        return prefs.getString(KEY_PENDING_APK, null)
+    }
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -39,7 +52,7 @@ class MainActivity : FlutterActivity() {
 
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                         if (!packageManager.canRequestPackageInstalls()) {
-                            pendingApkPath = filePath
+                            savePendingApk(filePath)
                             val manageIntent = Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES).apply {
                                 data = Uri.parse("package:$packageName")
                             }
@@ -109,10 +122,10 @@ class MainActivity : FlutterActivity() {
     }
 
     private fun checkAndResumePendingInstall() {
-        val path = pendingApkPath ?: return
+        val path = getPendingApk() ?: return
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             if (packageManager.canRequestPackageInstalls()) {
-                pendingApkPath = null
+                savePendingApk(null)
                 val file = File(path)
                 if (file.exists()) {
                     launchInstaller(file)
@@ -120,7 +133,7 @@ class MainActivity : FlutterActivity() {
                 }
             }
         } else {
-            pendingApkPath = null
+            savePendingApk(null)
             val file = File(path)
             if (file.exists()) {
                 launchInstaller(file)
