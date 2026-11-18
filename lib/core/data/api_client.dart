@@ -408,6 +408,7 @@ class ApiClient {
     required String cargo,
     required double weightTons,
     required String driverId,
+    required String truckPlate,
   }) async {
     try {
       final body = jsonEncode({
@@ -416,6 +417,7 @@ class ApiClient {
         'cargo_title': cargo,
         'weight_tons': weightTons,
         'driver_id': driverId,
+        'truck_plate': truckPlate,
       });
 
       final response = await _httpClient.post(
@@ -448,14 +450,80 @@ class ApiClient {
     return null;
   }
 
+  // 5b. ACCEPT TRIP
+  Future<bool> acceptTrip(String tripId) async {
+    try {
+      final response = await _httpClient.post(
+        Uri.parse('$baseUrl/trips/$tripId/accept'),
+        headers: _headers,
+      ).timeout(const Duration(seconds: 8));
+      return response.statusCode == 200;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  // 5c. START TRIP
+  Future<bool> startTrip(String tripId) async {
+    try {
+      final response = await _httpClient.post(
+        Uri.parse('$baseUrl/trips/$tripId/start'),
+        headers: _headers,
+      ).timeout(const Duration(seconds: 8));
+      return response.statusCode == 200;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  // 5d. REPORT BREAKDOWN / SOS
+  Future<bool> reportBreakdown(
+    String tripId, {
+    required double latitude,
+    required double longitude,
+    required String reason,
+    String? remarks,
+  }) async {
+    try {
+      final body = jsonEncode({
+        'latitude': latitude,
+        'longitude': longitude,
+        'reason': reason,
+        'remarks': remarks,
+      });
+
+      final response = await _httpClient.post(
+        Uri.parse('$baseUrl/trips/$tripId/breakdown'),
+        headers: _headers,
+        body: body,
+      ).timeout(const Duration(seconds: 10));
+      return response.statusCode == 200;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  // 5e. REPORT DELIVERY FAILED
+  Future<bool> reportDeliveryFailed(String tripId, {String? remarks}) async {
+    try {
+      final url = remarks != null 
+          ? '$baseUrl/trips/$tripId/fail?remarks=${Uri.encodeComponent(remarks)}'
+          : '$baseUrl/trips/$tripId/fail';
+
+      final response = await _httpClient.post(
+        Uri.parse(url),
+        headers: _headers,
+      ).timeout(const Duration(seconds: 8));
+      return response.statusCode == 200;
+    } catch (_) {
+      return false;
+    }
+  }
+
   // 5. UPDATE TRIP STATUS
   Future<bool> updateTripStatus(String tripId, TripStatus status) async {
     try {
-      final statusStr = status == TripStatus.waiting
-          ? 'waiting'
-          : (status == TripStatus.accepted
-              ? 'accepted'
-              : (status == TripStatus.running ? 'running' : 'delivered'));
+      final statusStr = status.name;
 
       final response = await _httpClient.patch(
         Uri.parse('$baseUrl/trips/$tripId/status'),
@@ -518,11 +586,15 @@ class ApiClient {
   }
 
   TripStatus _parseTripStatus(String? statusStr) {
-    switch (statusStr) {
+    switch (statusStr?.toLowerCase()) {
       case 'running':
         return TripStatus.running;
       case 'accepted':
         return TripStatus.accepted;
+      case 'breakdown':
+        return TripStatus.breakdown;
+      case 'failed':
+        return TripStatus.failed;
       case 'delivered':
         return TripStatus.delivered;
       case 'waiting':

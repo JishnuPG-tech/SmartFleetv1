@@ -125,6 +125,11 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
                   statusType = ChipStatusType.success;
                   statusLabel = l10n.statusDelivered;
                   break;
+                case TripStatus.breakdown:
+                case TripStatus.failed:
+                  statusType = ChipStatusType.danger;
+                  statusLabel = trip.status == TripStatus.breakdown ? "Breakdown" : "Failed";
+                  break;
               }
 
               final origin = KeralaLocations.resolve(trip.from);

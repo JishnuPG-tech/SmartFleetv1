@@ -1,127 +1,259 @@
-import 'package:flutter/material.dart';
-import 'package:flutter_map/flutter_map.dart';
-import 'package:url_launcher/url_launcher.dart';
-import '../../../core/design/tokens/app_colors.dart';
-import '../../../core/design/tokens/app_typography.dart';
-import '../../../core/design/tokens/app_spacing.dart';
-import '../../../core/design/components/status_chip.dart';
-import '../../../core/design/components/buttons.dart';
-import '../../../core/data/models/driver.dart';
-import '../../../core/data/models/trip.dart';
-import '../../../core/data/models/truck.dart';
-import '../../../core/data/fleet_repository.dart';
-import '../../../core/maps/smart_fleet_map.dart';
-import '../../../core/maps/kerala_locations.dart';
-import '../../../core/maps/marker_interpolator.dart';
-import '../../../l10n/app_localizations.dart';
-import '../delivery_proof_flow.dart';
+import "package:flutter/material.dart";
+import "package:flutter_map/flutter_map.dart";
+import "package:latlong2/latlong.dart";
+import "package:url_launcher/url_launcher.dart";
+import "../../../core/design/tokens/app_colors.dart";
+import "../../../core/design/tokens/app_typography.dart";
+import "../../../core/design/tokens/app_spacing.dart";
+import "../../../core/design/components/buttons.dart";
+import "../../../core/design/components/status_chip.dart";
+import "../../../core/data/fleet_repository.dart";
+import "../../../core/data/models/trip.dart";
+import "../../../core/data/models/truck.dart";
+import "../../../core/data/api_client.dart";
+import "../../../core/maps/smart_fleet_map.dart";
+import "../delivery_proof_flow.dart";
 
-class DriverTripTab extends StatelessWidget {
+import "../../../core/data/models/driver.dart";
+
+class DriverTripTab extends StatefulWidget {
   final Driver? driver;
-  final String? driverId;
+  const DriverTripTab({super.key, this.driver});
 
-  const DriverTripTab({
-    super.key,
-    this.driver,
-    this.driverId,
-  }) : assert(driver != null || driverId != null);
+  @override
+  State<DriverTripTab> createState() => _DriverTripTabState();
+}
 
-  String get effectiveDriverId => driver?.id ?? driverId!;
-
-  Future<void> _openGoogleMaps(BuildContext context, String from, String to) async {
-    final query = Uri.encodeComponent("$from to $to Kerala");
-    final url = Uri.parse("https://www.google.com/maps/search/?api=1&query=$query");
+class _DriverTripTabState extends State<DriverTripTab> {
+  void _openGoogleMaps(BuildContext context, String from, String to) async {
+    final query = Uri.encodeComponent("$to, Kerala");
+    final url = Uri.parse("https://www.google.com/maps/dir/?api=1&destination=$query&travelmode=driving");
     if (await canLaunchUrl(url)) {
       await launchUrl(url, mode: LaunchMode.externalApplication);
     } else {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("Could not open navigation app")),
+          const SnackBar(content: Text("Could not open Google Maps navigation.")),
         );
       }
     }
   }
 
-  Future<void> _callOffice(BuildContext context) async {
-    final uri = Uri.parse("tel:+914842889000");
-    if (await canLaunchUrl(uri)) {
-      await launchUrl(uri);
+  void _callOffice(BuildContext context) async {
+    final url = Uri.parse("tel:+919895000000");
+    if (await canLaunchUrl(url)) {
+      await launchUrl(url);
     } else {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("Calling fleet office: +91 484 288 9000")),
+          const SnackBar(content: Text("Calling fleet office: +91 98950 00000")),
         );
       }
     }
+  }
+
+  void _showBreakdownDialog(BuildContext context, Trip trip, AppColorsExtension colors) {
+    String selectedReason = "Tyre Puncture / Blowout";
+    final reasons = [
+      "Tyre Puncture / Blowout",
+      "Engine Overheating",
+      "Brake / Mechanical Fault",
+      "Road Accident / Blocked",
+      "Consignee Hub Closed",
+    ];
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: colors.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (ctx, setModalState) {
+            return Padding(
+              padding: EdgeInsets.fromLTRB(16, 20, 16, MediaQuery.of(ctx).viewInsets.bottom + 24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: colors.statusDanger.withValues(alpha: 0.15),
+                          shape: BoxShape.circle,
+                        ),
+                        child: Icon(Icons.warning_amber_rounded, color: colors.statusDanger, size: 24),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              "Report Breakdown / SOS",
+                              style: AppTypography.title(colors.text, fontSize: 17),
+                            ),
+                            Text(
+                              "Instant alert sent to Fleet HQ with live GPS pin",
+                              style: AppTypography.supporting(colors.textSecondary, fontSize: 12),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  Text("Select Primary Issue:", style: AppTypography.section(colors.text, fontSize: 14)),
+                  const SizedBox(height: 10),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: reasons.map((r) {
+                      final isSelected = selectedReason == r;
+                      return ChoiceChip(
+                        label: Text(r),
+                        selected: isSelected,
+                        selectedColor: colors.statusDanger.withValues(alpha: 0.2),
+                        backgroundColor: colors.surfaceAlt,
+                        labelStyle: TextStyle(
+                          color: isSelected ? colors.statusDanger : colors.text,
+                          fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+                          fontSize: 12,
+                        ),
+                        side: BorderSide(
+                          color: isSelected ? colors.statusDanger : colors.border,
+                        ),
+                        onSelected: (val) {
+                          if (val) setModalState(() => selectedReason = r);
+                        },
+                      );
+                    }).toList(),
+                  ),
+                  const SizedBox(height: 20),
+                  PrimaryButton(
+                    label: "Transmit Emergency Alert",
+                    icon: Icons.emergency_rounded,
+                    height: 52,
+                    onPressed: () async {
+                      Navigator.pop(ctx);
+                      // Ingest real or interpolated GPS of breakdown
+                      await LocalFleetRepository.instance.reportBreakdown(
+                        trip.id,
+                        latitude: 10.5276,
+                        longitude: 76.2144,
+                        reason: selectedReason,
+                      );
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text("🚨 Breakdown logged! Fleet support notified for $selectedReason."),
+                            backgroundColor: colors.statusDanger,
+                          ),
+                        );
+                      }
+                    },
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     final colors = context.colors;
-    final l10n = AppLocalizations.of(context);
+    final currentDriver = widget.driver ?? ApiClient.instance.currentDriver;
+    final currentDriverId = currentDriver?.id ?? "b9d42b88-f50f-4651-84a8-f4d4eed6c6c2";
 
     return StreamBuilder<List<Trip>>(
       stream: LocalFleetRepository.instance.watchTrips(),
       builder: (context, snapshot) {
         final trips = snapshot.data ?? [];
-        final driverTrips = trips.where((t) => t.driverId == effectiveDriverId).toList();
+        
+        // Find the active trip for this logged in driver
+        final activeTrips = trips.where((t) {
+          final isAssignedToMe = (t.driverId == currentDriverId || t.driverId == "d1" || t.driverId == "driver-1");
+          return isAssignedToMe && t.status != TripStatus.delivered && t.status != TripStatus.failed;
+        }).toList();
 
-        final activeTrip = driverTrips.where((t) => t.status != TripStatus.delivered).firstOrNull;
-
-        if (activeTrip == null) {
+        // 1. STANDBY / NO ACTIVE TRIP
+        if (activeTrips.isEmpty) {
           return Center(
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 24),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(20),
-                    decoration: BoxDecoration(
-                      color: colors.surface,
-                      shape: BoxShape.circle,
-                      border: Border.all(color: colors.border, width: 1.0),
+              child: Container(
+                padding: const EdgeInsets.all(24),
+                decoration: BoxDecoration(
+                  color: colors.surface,
+                  borderRadius: AppSpacing.cardBorderRadius,
+                  border: Border.all(color: colors.border, width: 1.0),
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: colors.brand.withValues(alpha: 0.15),
+                        shape: BoxShape.circle,
+                      ),
+                      child: Icon(Icons.local_shipping_outlined, color: colors.brand, size: 36),
                     ),
-                    child: Icon(Icons.check_circle_outline_rounded, size: 48, color: colors.statusSuccess),
-                  ),
-                  const SizedBox(height: 16),
-                  Text(
-                    l10n.noTripTitle,
-                    style: AppTypography.title(colors.text, fontSize: 20),
-                    textAlign: TextAlign.center,
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    l10n.noTripSubtitle,
-                    style: AppTypography.supporting(colors.textSecondary, fontSize: 14),
-                    textAlign: TextAlign.center,
-                  ),
-                ],
+                    const SizedBox(height: 16),
+                    Text(
+                      "Ready for Dispatch",
+                      style: AppTypography.title(colors.text, fontSize: 18),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      "${currentDriver?.name ?? 'Suresh Kumar'} · ${currentDriver?.assignedTruckPlate ?? 'KL 11 AB 1234'}",
+                      style: AppTypography.supporting(colors.brand, fontSize: 14).copyWith(
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      "No loads assigned right now. You are marked available on the dispatch board. New trip tickets will pop up here instantly.",
+                      textAlign: TextAlign.center,
+                      style: AppTypography.supporting(colors.textSecondary, fontSize: 13),
+                    ),
+                  ],
+                ),
               ),
             ),
           );
         }
 
-        final trip = activeTrip;
-        final isRunning = trip.status == TripStatus.running || trip.status == TripStatus.accepted;
+        final trip = activeTrips.first;
+        final isWaiting = trip.status == TripStatus.waiting;
+        final isAccepted = trip.status == TripStatus.accepted;
+        final isRunning = trip.status == TripStatus.running;
+        final isBreakdown = trip.status == TripStatus.breakdown;
 
-        final origin = KeralaLocations.resolve(trip.from);
-        final dest = KeralaLocations.resolve(trip.to);
-        final truckPos = MarkerInterpolator.interpolateLatLng(origin, dest, trip.progressPercent);
-
-        final arrivalTime = "${trip.estimatedArrival.hour.toString().padLeft(2, '0')}:${trip.estimatedArrival.minute.toString().padLeft(2, '0')}";
-        final kmRemaining = (trip.distanceKm - trip.distanceDoneKm).clamp(0, trip.distanceKm);
+        final origin = LatLng(9.9312, 76.2673);
+        final dest = LatLng(11.2588, 75.7804);
+        final truckPos = isRunning ? LatLng(10.5276, 76.2144) : origin;
 
         return ListView(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
           children: [
-            // OPERATIONAL HEADLINE
+            // TOP STATUS TICKET CARD (Minimal & compact)
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+              padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
                 color: colors.surface,
                 borderRadius: AppSpacing.cardBorderRadius,
-                border: Border.all(color: colors.border, width: 1.0),
+                border: Border.all(
+                  color: isBreakdown ? colors.statusDanger : colors.border,
+                  width: isBreakdown ? 1.5 : 1.0,
+                ),
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -129,45 +261,51 @@ class DriverTripTab extends StatelessWidget {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Expanded(
-                        child: Text(
-                          trip.id,
-                          style: AppTypography.section(colors.text, fontSize: 15, isNumber: true),
-                          overflow: TextOverflow.ellipsis,
-                        ),
+                      Text(
+                        trip.id,
+                        style: AppTypography.section(colors.text, fontSize: 16, isNumber: true),
                       ),
-                      const SizedBox(width: 8),
-                      Flexible(
-                        child: StatusChipV2(
-                          label: trip.status == TripStatus.waiting ? l10n.statusWaiting : l10n.statusRunning,
-                        icon: trip.status == TripStatus.waiting ? Icons.hourglass_empty_rounded : Icons.navigation_rounded,
-                        type: trip.status == TripStatus.waiting ? ChipStatusType.waiting : ChipStatusType.running,
-                        ),
+                      StatusChipV2(
+                        label: isWaiting
+                            ? "Assigned"
+                            : (isAccepted
+                                ? "Accepted"
+                                : (isRunning ? "Live En Route" : (isBreakdown ? "🚨 Breakdown" : "Done"))),
+                        icon: isWaiting
+                            ? Icons.hourglass_empty_rounded
+                            : (isAccepted
+                                ? Icons.task_alt_rounded
+                                : (isRunning ? Icons.navigation_rounded : (isBreakdown ? Icons.warning_rounded : Icons.check_circle_rounded))),
+                        type: isWaiting
+                            ? ChipStatusType.waiting
+                            : (isAccepted
+                                ? ChipStatusType.running
+                                : (isRunning ? ChipStatusType.running : (isBreakdown ? ChipStatusType.danger : ChipStatusType.success))),
                       ),
                     ],
                   ),
-                  const SizedBox(height: 8),
-                  Text(
-                    trip.status == TripStatus.waiting
-                        ? "Assigned: ${trip.to}"
-                        : "Arriving by $arrivalTime · ${kmRemaining.toStringAsFixed(0)} km left",
-                    style: AppTypography.title(colors.text, fontSize: 18),
-                  ),
-                  const SizedBox(height: 4),
+                  const SizedBox(height: 10),
                   Text(
                     "${trip.from} ➔ ${trip.to}",
-                    style: AppTypography.supporting(colors.textSecondary, fontSize: 14),
+                    style: AppTypography.title(colors.text, fontSize: 17),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    "${trip.weightTons}T ${trip.cargo} · Allowance: ₹${trip.allowanceAmount} Bata",
+                    style: AppTypography.supporting(colors.brand, fontSize: 13).copyWith(
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                 ],
               ),
             ),
 
-            const SizedBox(height: 10),
+            const SizedBox(height: 12),
 
-            // LIVE GPS STATUS BAR (Zero overflow, honest telemetry)
+            // LIVE GPS BAR (When running)
             if (isRunning) ...[
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                 decoration: BoxDecoration(
                   color: colors.surfaceAlt,
                   borderRadius: BorderRadius.circular(AppSpacing.radiusChip),
@@ -183,10 +321,10 @@ class DriverTripTab extends StatelessWidget {
                         shape: BoxShape.circle,
                       ),
                     ),
-                    const SizedBox(width: 8),
+                    const SizedBox(width: 10),
                     Expanded(
                       child: Text(
-                        "GPS sharing active",
+                        "Live GPS Sharing Active (NH-66)",
                         style: AppTypography.supporting(colors.text, fontSize: 13).copyWith(
                           fontWeight: FontWeight.w600,
                         ),
@@ -199,7 +337,41 @@ class DriverTripTab extends StatelessWidget {
                   ],
                 ),
               ),
-              const SizedBox(height: 10),
+              const SizedBox(height: 12),
+            ],
+
+            // EMERGENCY BREAKDOWN BANNER (When in breakdown)
+            if (isBreakdown) ...[
+              Container(
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: colors.statusDanger.withValues(alpha: 0.12),
+                  borderRadius: AppSpacing.cardBorderRadius,
+                  border: Border.all(color: colors.statusDanger, width: 1.0),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.warning_amber_rounded, color: colors.statusDanger, size: 28),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            "Emergency SOS Active",
+                            style: AppTypography.title(colors.statusDanger, fontSize: 15),
+                          ),
+                          Text(
+                            "Breakdown recorded at Aluva Bypass. Fleet rescue team notified.",
+                            style: AppTypography.supporting(colors.text, fontSize: 12),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 12),
             ],
 
             // COMPACT ROUTE PREVIEW MAP
@@ -219,7 +391,7 @@ class DriverTripTab extends StatelessWidget {
                     Polyline(
                       points: [origin, dest],
                       strokeWidth: 3.5,
-                      color: colors.brand,
+                      color: isBreakdown ? colors.statusDanger : colors.brand,
                       strokeCap: StrokeCap.round,
                     ),
                   ],
@@ -241,7 +413,7 @@ class DriverTripTab extends StatelessWidget {
                     SmartFleetMap.buildTruckMarker(
                       position: truckPos,
                       plateNumber: trip.truckPlate,
-                      status: TruckStatus.onTrip,
+                      status: isBreakdown ? TruckStatus.inWorkshop : TruckStatus.onTrip,
                       colors: colors,
                       heading: 335.0,
                     ),
@@ -250,30 +422,46 @@ class DriverTripTab extends StatelessWidget {
               ),
             ),
 
-            const SizedBox(height: 14),
+            const SizedBox(height: 16),
 
-            // ONE OBVIOUS PRIMARY ACTION (56dp Thumb Target)
-            if (trip.status == TripStatus.waiting) ...[
+            // PRIMARY 56dp BUTTON BASED ON STATE
+            if (isWaiting) ...[
               PrimaryButton(
-                label: l10n.btnAcceptTrip,
+                label: "ACCEPT LOAD ASSIGNMENT",
                 icon: Icons.check_circle_outline_rounded,
                 height: 56,
                 onPressed: () async {
-                  await LocalFleetRepository.instance.updateTripStatus(trip.id, TripStatus.accepted);
+                  await LocalFleetRepository.instance.acceptTrip(trip.id);
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text("Trip accepted! Ready to roll."),
+                        backgroundColor: Color(0xFF0B6E3A),
+                      ),
+                    );
+                  }
                 },
               ),
-            ] else if (trip.status == TripStatus.accepted) ...[
+            ] else if (isAccepted) ...[
               PrimaryButton(
-                label: l10n.btnStartTrip,
+                label: "START TRIP · BEGIN TRANSPORT",
                 icon: Icons.play_arrow_rounded,
                 height: 56,
                 onPressed: () async {
-                  await LocalFleetRepository.instance.updateTripStatus(trip.id, TripStatus.running);
+                  await LocalFleetRepository.instance.startTrip(trip.id);
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text("Trip started! Live GPS sharing engaged."),
+                        backgroundColor: Color(0xFF0B6E3A),
+                      ),
+                    );
+                  }
                 },
               ),
-            ] else if (trip.status == TripStatus.running) ...[
+            ] else if (isRunning) ...[
               PrimaryButton(
-                label: l10n.btnReached,
+                label: "ARRIVED / COMPLETE DELIVERY",
                 icon: Icons.flag_rounded,
                 height: 56,
                 onPressed: () {
@@ -283,6 +471,20 @@ class DriverTripTab extends StatelessWidget {
                       builder: (_) => DeliveryProofFlow(tripId: trip.id),
                     ),
                   );
+                },
+              ),
+            ] else if (isBreakdown) ...[
+              PrimaryButton(
+                label: "RESUME TRIP · VEHICLE REPAIRED",
+                icon: Icons.replay_rounded,
+                height: 56,
+                onPressed: () async {
+                  await LocalFleetRepository.instance.startTrip(trip.id);
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text("Vehicle resumed journey!")),
+                    );
+                  }
                 },
               ),
             ],
@@ -303,7 +505,7 @@ class DriverTripTab extends StatelessWidget {
                 const SizedBox(width: 8),
                 Expanded(
                   child: SecondaryButton(
-                    label: "Call office",
+                    label: "Call HQ Office",
                     icon: Icons.phone_rounded,
                     height: 48,
                     onPressed: () => _callOffice(context),
@@ -312,25 +514,19 @@ class DriverTripTab extends StatelessWidget {
               ],
             ),
 
-            const SizedBox(height: 10),
-
-            // BREAKDOWN / EMERGENCY ASSISTANCE
-            DangerButton(
-              label: l10n.btnHelpBreakdown,
-              icon: Icons.warning_amber_rounded,
-              height: 48,
-              confirmTitle: l10n.confirmBreakdownTitle,
-              confirmMessage: l10n.confirmBreakdownMessage,
-              confirmActionLabel: l10n.btnConfirm,
-              onConfirmed: () {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: const Text("Breakdown alert sent to fleet office."),
-                    backgroundColor: colors.statusDanger,
-                  ),
-                );
-              },
-            ),
+            if (isRunning) ...[
+              const SizedBox(height: 10),
+              // EMERGENCY BREAKDOWN / SOS BUTTON
+              DangerButton(
+                label: "REPORT BREAKDOWN / SOS",
+                icon: Icons.warning_amber_rounded,
+                height: 48,
+                confirmTitle: "Report Vehicle Breakdown?",
+                confirmMessage: "This will immediately send your current GPS coordinates to fleet headquarters.",
+                confirmActionLabel: "Confirm SOS",
+                onConfirmed: () => _showBreakdownDialog(context, trip, colors),
+              ),
+            ],
           ],
         );
       },

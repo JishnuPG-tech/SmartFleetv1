@@ -21,6 +21,18 @@ abstract class FleetRepository {
     required String photoPath,
     required String signatureSvg,
   });
+
+  Future<void> acceptTrip(String tripId);
+  Future<void> startTrip(String tripId);
+  Future<void> reportBreakdown(
+    String tripId, {
+    required double latitude,
+    required double longitude,
+    required String reason,
+    String? remarks,
+  });
+  Future<void> reportDeliveryFailed(String tripId, {String? remarks});
+
   Future<Trip> createTrip({
     required String from,
     required String to,
@@ -261,6 +273,66 @@ class LocalFleetRepository implements FleetRepository {
   }
 
   @override
+  Future<void> acceptTrip(String tripId) async {
+    await _init();
+    final index = _trips.indexWhere((t) => t.id == tripId);
+    if (index != -1) {
+      _trips[index] = _trips[index].copyWith(status: TripStatus.accepted);
+      await _saveToDisk();
+      _notifyAll();
+      unawaited(_apiClient.acceptTrip(tripId));
+    }
+  }
+
+  @override
+  Future<void> startTrip(String tripId) async {
+    await _init();
+    final index = _trips.indexWhere((t) => t.id == tripId);
+    if (index != -1) {
+      _trips[index] = _trips[index].copyWith(status: TripStatus.running);
+      await _saveToDisk();
+      _notifyAll();
+      unawaited(_apiClient.startTrip(tripId));
+    }
+  }
+
+  @override
+  Future<void> reportBreakdown(
+    String tripId, {
+    required double latitude,
+    required double longitude,
+    required String reason,
+    String? remarks,
+  }) async {
+    await _init();
+    final index = _trips.indexWhere((t) => t.id == tripId);
+    if (index != -1) {
+      _trips[index] = _trips[index].copyWith(status: TripStatus.breakdown);
+      await _saveToDisk();
+      _notifyAll();
+      unawaited(_apiClient.reportBreakdown(
+        tripId,
+        latitude: latitude,
+        longitude: longitude,
+        reason: reason,
+        remarks: remarks,
+      ));
+    }
+  }
+
+  @override
+  Future<void> reportDeliveryFailed(String tripId, {String? remarks}) async {
+    await _init();
+    final index = _trips.indexWhere((t) => t.id == tripId);
+    if (index != -1) {
+      _trips[index] = _trips[index].copyWith(status: TripStatus.failed);
+      await _saveToDisk();
+      _notifyAll();
+      unawaited(_apiClient.reportDeliveryFailed(tripId, remarks: remarks));
+    }
+  }
+
+  @override
   Future<Trip> createTrip({
     required String from,
     required String to,
@@ -311,6 +383,7 @@ class LocalFleetRepository implements FleetRepository {
       cargo: cargo,
       weightTons: weightTons,
       driverId: driverId,
+      truckPlate: truckPlate,
     ));
 
     return newTrip;

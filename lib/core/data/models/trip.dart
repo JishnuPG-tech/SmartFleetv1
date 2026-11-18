@@ -2,7 +2,9 @@ enum TripStatus {
   waiting,
   accepted,
   running,
+  breakdown,
   delivered,
+  failed,
 }
 
 class Trip {

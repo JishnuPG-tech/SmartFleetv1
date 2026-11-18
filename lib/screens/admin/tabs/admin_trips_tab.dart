@@ -147,6 +147,14 @@ class _AdminTripsTabState extends State<AdminTripsTab> {
                     statusType = ChipStatusType.success;
                     statusLabel = l10n.statusDelivered;
                     break;
+                  case TripStatus.breakdown:
+                    statusType = ChipStatusType.danger;
+                    statusLabel = "Breakdown";
+                    break;
+                  case TripStatus.failed:
+                    statusType = ChipStatusType.danger;
+                    statusLabel = "Failed";
+                    break;
                 }
 
                 return Padding(

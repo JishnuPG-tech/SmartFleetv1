@@ -49,6 +49,13 @@ class StatusChip extends StatelessWidget {
           textColor: AppColors.statusDoneText,
           backgroundColor: AppColors.statusDoneBg,
         );
+      default:
+        return StatusChip(
+          label: 'Alert',
+          icon: Icons.warning,
+          textColor: AppColors.statusWaitingText,
+          backgroundColor: AppColors.statusWaitingBg,
+        );
     }
   }
 
