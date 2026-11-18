@@ -20,65 +20,16 @@ class _CreateTripScreenState extends State<CreateTripScreen> {
 
   String? _selectedFrom;
   String? _selectedTo;
-  
-  // Cargo dropdown + optional custom entry
-  String? _selectedCargo;
-  final _customCargoController = TextEditingController();
-
-  // Weight dropdown + optional custom entry
-  double? _selectedWeight;
-  final _customWeightController = TextEditingController();
-
+  final _cargoController = TextEditingController();
+  final _weightController = TextEditingController();
   String? _selectedDriverId;
+
   bool _isSubmitting = false;
-
-  static const List<String> _cargoOptions = [
-    "Industrial Steel Coils",
-    "Container Freight (Electronics & Spices)",
-    "Cement Sacks & TMT Steel Bars",
-    "Bulk Polymer Granules",
-    "Automotive Spare Parts",
-    "Food Grains & Rice Sacks",
-    "Timber & Wood Pulp",
-    "Petroleum & Chemical Drums",
-    "FMCG Packaged Goods",
-    "Construction Aggregates & Sand",
-    "Ceramic Tiles & Sanitaryware",
-    "Other / Custom Cargo...",
-  ];
-
-  static const List<Map<String, dynamic>> _weightOptions = [
-    {"label": "5.0 Tons (Light Commercial)", "val": 5.0},
-    {"label": "10.0 Tons (6-Wheel Rigid)", "val": 10.0},
-    {"label": "15.0 Tons (10-Wheel Medium)", "val": 15.0},
-    {"label": "18.5 Tons (Multi-Axle Cargo)", "val": 18.5},
-    {"label": "22.0 Tons (Heavy Multi-Axle)", "val": 22.0},
-    {"label": "25.0 Tons (Standard 12-Wheel)", "val": 25.0},
-    {"label": "28.0 Tons (14-Wheel Heavy)", "val": 28.0},
-    {"label": "31.0 Tons (Multi-Axle Tipper)", "val": 31.0},
-    {"label": "35.0 Tons (Heavy Tipper)", "val": 35.0},
-    {"label": "40.0 Tons (Trailer Haulage)", "val": 40.0},
-    {"label": "Other / Custom Weight...", "val": -1.0},
-  ];
-
-  String get _effectiveCargo {
-    if (_selectedCargo == "Other / Custom Cargo...") {
-      return _customCargoController.text.trim();
-    }
-    return _selectedCargo ?? "";
-  }
-
-  double get _effectiveWeight {
-    if (_selectedWeight == -1.0) {
-      return double.tryParse(_customWeightController.text.trim()) ?? 0.0;
-    }
-    return _selectedWeight ?? 0.0;
-  }
 
   @override
   void dispose() {
-    _customCargoController.dispose();
-    _customWeightController.dispose();
+    _cargoController.dispose();
+    _weightController.dispose();
     super.dispose();
   }
 
@@ -87,8 +38,6 @@ class _CreateTripScreenState extends State<CreateTripScreen> {
 
     final driver = drivers.firstWhere((d) => d.id == _selectedDriverId);
     final colors = context.colors;
-    final cargoName = _effectiveCargo;
-    final weightVal = _effectiveWeight;
 
     // Show Confirmation Dialog
     final confirmed = await showDialog<bool>(
@@ -119,7 +68,7 @@ class _CreateTripScreenState extends State<CreateTripScreen> {
               ),
               const SizedBox(height: 8),
               Text(
-                "Cargo: $cargoName (${weightVal.toStringAsFixed(1)} Tons)",
+                "Cargo: ${_cargoController.text.trim()} (${_weightController.text.trim()} Tons)",
                 style: AppTypography.body(colors.text),
               ),
               const SizedBox(height: 8),
@@ -155,11 +104,12 @@ class _CreateTripScreenState extends State<CreateTripScreen> {
     if (confirmed == true && mounted) {
       setState(() => _isSubmitting = true);
       try {
+        final weight = double.tryParse(_weightController.text.trim()) ?? 10.0;
         await LocalFleetRepository.instance.createTrip(
           from: _selectedFrom!,
           to: _selectedTo!,
-          cargo: cargoName,
-          weightTons: weightVal,
+          cargo: _cargoController.text.trim(),
+          weightTons: weight,
           driverId: _selectedDriverId!,
         );
 
@@ -221,14 +171,6 @@ class _CreateTripScreenState extends State<CreateTripScreen> {
                       borderRadius: AppSpacing.buttonBorderRadius,
                       borderSide: BorderSide(color: colors.border),
                     ),
-                    enabledBorder: OutlineInputBorder(
-                      borderRadius: AppSpacing.buttonBorderRadius,
-                      borderSide: BorderSide(color: colors.border),
-                    ),
-                    focusedBorder: OutlineInputBorder(
-                      borderRadius: AppSpacing.buttonBorderRadius,
-                      borderSide: BorderSide(color: colors.brand, width: 2),
-                    ),
                   ),
                   items: places.map((p) => DropdownMenuItem(value: p, child: Text(p, style: AppTypography.body(colors.text)))).toList(),
                   onChanged: (val) => setState(() => _selectedFrom = val),
@@ -252,14 +194,6 @@ class _CreateTripScreenState extends State<CreateTripScreen> {
                       borderRadius: AppSpacing.buttonBorderRadius,
                       borderSide: BorderSide(color: colors.border),
                     ),
-                    enabledBorder: OutlineInputBorder(
-                      borderRadius: AppSpacing.buttonBorderRadius,
-                      borderSide: BorderSide(color: colors.border),
-                    ),
-                    focusedBorder: OutlineInputBorder(
-                      borderRadius: AppSpacing.buttonBorderRadius,
-                      borderSide: BorderSide(color: colors.brand, width: 2),
-                    ),
                   ),
                   items: places.map((p) => DropdownMenuItem(value: p, child: Text(p, style: AppTypography.body(colors.text)))).toList(),
                   onChanged: (val) => setState(() => _selectedTo = val),
@@ -272,14 +206,14 @@ class _CreateTripScreenState extends State<CreateTripScreen> {
 
                 const SizedBox(height: 20),
 
-                // 3. CARGO DESCRIPTION (DROPDOWN + OPTIONAL CUSTOM FIELD)
+                // 3. CARGO & WEIGHT
                 Text(l10n.cargoTitleLabel, style: AppTypography.heading(colors.text)),
                 const SizedBox(height: 8),
-                DropdownButtonFormField<String>(
-                  isExpanded: true,
-                  value: _selectedCargo,
-                  hint: Text("Select Cargo Description", style: AppTypography.body(colors.textSecondary)),
+                TextFormField(
+                  controller: _cargoController,
                   decoration: InputDecoration(
+                    hintText: "e.g. Industrial Steel Coils",
+                    hintStyle: AppTypography.body(colors.textSecondary),
                     prefixIcon: Icon(Icons.inventory_2_outlined, color: colors.brand),
                     filled: true,
                     fillColor: colors.surface,
@@ -287,69 +221,21 @@ class _CreateTripScreenState extends State<CreateTripScreen> {
                       borderRadius: AppSpacing.buttonBorderRadius,
                       borderSide: BorderSide(color: colors.border),
                     ),
-                    enabledBorder: OutlineInputBorder(
-                      borderRadius: AppSpacing.buttonBorderRadius,
-                      borderSide: BorderSide(color: colors.border),
-                    ),
-                    focusedBorder: OutlineInputBorder(
-                      borderRadius: AppSpacing.buttonBorderRadius,
-                      borderSide: BorderSide(color: colors.brand, width: 2),
-                    ),
                   ),
-                  items: _cargoOptions.map((c) {
-                    return DropdownMenuItem<String>(
-                      value: c,
-                      child: Text(c, style: AppTypography.body(colors.text), overflow: TextOverflow.ellipsis),
-                    );
-                  }).toList(),
-                  onChanged: (val) => setState(() => _selectedCargo = val),
-                  validator: (val) => val == null ? l10n.errCargoRequired : null,
+                  style: AppTypography.body(colors.text),
+                  validator: (val) => val == null || val.trim().isEmpty ? l10n.errCargoRequired : null,
                 ),
-
-                if (_selectedCargo == "Other / Custom Cargo...") ...[
-                  const SizedBox(height: 10),
-                  TextFormField(
-                    controller: _customCargoController,
-                    decoration: InputDecoration(
-                      hintText: "Enter specific cargo name",
-                      hintStyle: AppTypography.body(colors.textSecondary),
-                      prefixIcon: Icon(Icons.edit_note_rounded, color: colors.brand),
-                      filled: true,
-                      fillColor: colors.surface,
-                      border: OutlineInputBorder(
-                        borderRadius: AppSpacing.buttonBorderRadius,
-                        borderSide: BorderSide(color: colors.border),
-                      ),
-                      enabledBorder: OutlineInputBorder(
-                        borderRadius: AppSpacing.buttonBorderRadius,
-                        borderSide: BorderSide(color: colors.border),
-                      ),
-                      focusedBorder: OutlineInputBorder(
-                        borderRadius: AppSpacing.buttonBorderRadius,
-                        borderSide: BorderSide(color: colors.brand, width: 2),
-                      ),
-                    ),
-                    style: AppTypography.body(colors.text),
-                    validator: (val) {
-                      if (_selectedCargo == "Other / Custom Cargo..." &&
-                          (val == null || val.trim().isEmpty)) {
-                        return l10n.errCargoRequired;
-                      }
-                      return null;
-                    },
-                  ),
-                ],
 
                 const SizedBox(height: 20),
 
-                // 4. WEIGHT (DROPDOWN + OPTIONAL CUSTOM FIELD)
                 Text(l10n.cargoWeightLabel, style: AppTypography.heading(colors.text)),
                 const SizedBox(height: 8),
-                DropdownButtonFormField<double>(
-                  isExpanded: true,
-                  value: _selectedWeight,
-                  hint: Text("Select Payload Weight", style: AppTypography.body(colors.textSecondary)),
+                TextFormField(
+                  controller: _weightController,
+                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
                   decoration: InputDecoration(
+                    hintText: "e.g. 24.5",
+                    hintStyle: AppTypography.body(colors.textSecondary),
                     prefixIcon: Icon(Icons.scale_rounded, color: colors.brand),
                     filled: true,
                     fillColor: colors.surface,
@@ -357,66 +243,19 @@ class _CreateTripScreenState extends State<CreateTripScreen> {
                       borderRadius: AppSpacing.buttonBorderRadius,
                       borderSide: BorderSide(color: colors.border),
                     ),
-                    enabledBorder: OutlineInputBorder(
-                      borderRadius: AppSpacing.buttonBorderRadius,
-                      borderSide: BorderSide(color: colors.border),
-                    ),
-                    focusedBorder: OutlineInputBorder(
-                      borderRadius: AppSpacing.buttonBorderRadius,
-                      borderSide: BorderSide(color: colors.brand, width: 2),
-                    ),
                   ),
-                  items: _weightOptions.map((w) {
-                    final double val = w["val"] as double;
-                    final String label = w["label"] as String;
-                    return DropdownMenuItem<double>(
-                      value: val,
-                      child: Text(label, style: AppTypography.body(colors.text), overflow: TextOverflow.ellipsis),
-                    );
-                  }).toList(),
-                  onChanged: (val) => setState(() => _selectedWeight = val),
-                  validator: (val) => val == null ? l10n.errWeightRequired : null,
+                  style: AppTypography.body(colors.text),
+                  validator: (val) {
+                    if (val == null || val.trim().isEmpty) return l10n.errWeightRequired;
+                    final n = double.tryParse(val.trim());
+                    if (n == null || n <= 0) return l10n.errWeightRequired;
+                    return null;
+                  },
                 ),
-
-                if (_selectedWeight == -1.0) ...[
-                  const SizedBox(height: 10),
-                  TextFormField(
-                    controller: _customWeightController,
-                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                    decoration: InputDecoration(
-                      hintText: "Enter custom weight (e.g. 21.5)",
-                      hintStyle: AppTypography.body(colors.textSecondary),
-                      prefixIcon: Icon(Icons.edit_road_rounded, color: colors.brand),
-                      filled: true,
-                      fillColor: colors.surface,
-                      border: OutlineInputBorder(
-                        borderRadius: AppSpacing.buttonBorderRadius,
-                        borderSide: BorderSide(color: colors.border),
-                      ),
-                      enabledBorder: OutlineInputBorder(
-                        borderRadius: AppSpacing.buttonBorderRadius,
-                        borderSide: BorderSide(color: colors.border),
-                      ),
-                      focusedBorder: OutlineInputBorder(
-                        borderRadius: AppSpacing.buttonBorderRadius,
-                        borderSide: BorderSide(color: colors.brand, width: 2),
-                      ),
-                    ),
-                    style: AppTypography.body(colors.text),
-                    validator: (val) {
-                      if (_selectedWeight == -1.0) {
-                        if (val == null || val.trim().isEmpty) return l10n.errWeightRequired;
-                        final n = double.tryParse(val.trim());
-                        if (n == null || n <= 0) return l10n.errWeightRequired;
-                      }
-                      return null;
-                    },
-                  ),
-                ],
 
                 const SizedBox(height: 20),
 
-                // 5. ASSIGN DRIVER
+                // 4. ASSIGN DRIVER
                 Text(l10n.assignDriverLabel, style: AppTypography.heading(colors.text)),
                 const SizedBox(height: 8),
                 DropdownButtonFormField<String>(
@@ -430,14 +269,6 @@ class _CreateTripScreenState extends State<CreateTripScreen> {
                     border: OutlineInputBorder(
                       borderRadius: AppSpacing.buttonBorderRadius,
                       borderSide: BorderSide(color: colors.border),
-                    ),
-                    enabledBorder: OutlineInputBorder(
-                      borderRadius: AppSpacing.buttonBorderRadius,
-                      borderSide: BorderSide(color: colors.border),
-                    ),
-                    focusedBorder: OutlineInputBorder(
-                      borderRadius: AppSpacing.buttonBorderRadius,
-                      borderSide: BorderSide(color: colors.brand, width: 2),
                     ),
                   ),
                   items: drivers.map((d) {
