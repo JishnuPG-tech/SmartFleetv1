@@ -60,8 +60,8 @@ class UpdateService {
   static const MethodChannel _installerChannel =
       MethodChannel('com.smartfleet.app/installer');
 
-  static const int currentVersionCode = 1;
-  static const String currentVersionName = '2.0.0';
+  static const int currentVersionCode = 3;
+  static const String currentVersionName = '2.2.0';
 
   static Future<bool> canRequestPackageInstalls() async {
     try {

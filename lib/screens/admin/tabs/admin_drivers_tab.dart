@@ -38,40 +38,50 @@ class AdminDriversTab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return StreamBuilder<List<Driver>>(
-      stream: LocalFleetRepository.instance.watchDrivers(),
-      builder: (context, snapshot) {
-        final drivers = snapshot.data ?? [];
+    return RefreshIndicator(
+      onRefresh: () => LocalFleetRepository.instance.refresh(),
+      child: StreamBuilder<List<Driver>>(
+        stream: LocalFleetRepository.instance.watchDrivers(),
+        builder: (context, snapshot) {
+          final drivers = snapshot.data ?? [];
 
-        if (drivers.isEmpty) {
-          return const EmptyState(
-            icon: Icons.person_outline_rounded,
-            title: "No Registered Drivers",
-            subtitle: "Drivers who onboard via mobile app or the Web Admin Dashboard will appear here.",
-          );
-        }
-
-        return ListView.builder(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
-          itemCount: drivers.length,
-          itemBuilder: (context, index) {
-            final driver = drivers[index];
-
-            return Padding(
-              padding: const EdgeInsets.only(bottom: 8),
-              child: DriverCard(
-                name: driver.name,
-                phone: driver.phone,
-                licenceNumber: driver.licenceNumber,
-                isLicencePlaceholder: driver.isLicencePlaceholder,
-                experienceYears: driver.experienceYears,
-                assignedTruckPlate: driver.assignedTruckPlate,
-                onCall: () => _callDriver(context, driver.name, driver.phone),
-              ),
+          if (drivers.isEmpty) {
+            return ListView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              children: const [
+                SizedBox(height: 100),
+                EmptyState(
+                  icon: Icons.person_outline_rounded,
+                  title: "No Registered Drivers",
+                  subtitle: "Drivers who onboard via mobile app or the Web Admin Dashboard will appear here. Pull down to refresh.",
+                ),
+              ],
             );
-          },
-        );
-      },
+          }
+
+          return ListView.builder(
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+            itemCount: drivers.length,
+            itemBuilder: (context, index) {
+              final driver = drivers[index];
+
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: DriverCard(
+                  name: driver.name,
+                  phone: driver.phone,
+                  licenceNumber: driver.licenceNumber,
+                  isLicencePlaceholder: driver.isLicencePlaceholder,
+                  experienceYears: driver.experienceYears,
+                  assignedTruckPlate: driver.assignedTruckPlate,
+                  onCall: () => _callDriver(context, driver.name, driver.phone),
+                ),
+              );
+            },
+          );
+        },
+      ),
     );
   }
 }

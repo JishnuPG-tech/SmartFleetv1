@@ -100,6 +100,8 @@ class LocalFleetRepository implements FleetRepository {
     unawaited(_syncFromRemote());
   }
 
+  Future<void> refresh() => _syncFromRemote();
+
   Future<void> _syncFromRemote() async {
     try {
       final remoteTrips = await _apiClient.getTrips();
@@ -168,9 +170,10 @@ class LocalFleetRepository implements FleetRepository {
   }
 
   @override
-  Stream<List<Trip>> watchTrips() {
-    _init();
-    return _tripsController.stream;
+  Stream<List<Trip>> watchTrips() async* {
+    await _init();
+    yield List.unmodifiable(_trips);
+    yield* _tripsController.stream;
   }
 
   @override
@@ -390,9 +393,10 @@ class LocalFleetRepository implements FleetRepository {
   }
 
   @override
-  Stream<List<Driver>> watchDrivers() {
-    _init();
-    return _driversController.stream;
+  Stream<List<Driver>> watchDrivers() async* {
+    await _init();
+    yield List.unmodifiable(_drivers);
+    yield* _driversController.stream;
   }
 
   void addOrUpdateDriver(Driver driver) {
@@ -422,9 +426,10 @@ class LocalFleetRepository implements FleetRepository {
   }
 
   @override
-  Stream<List<Truck>> watchTrucks() {
-    _init();
-    return _trucksController.stream;
+  Stream<List<Truck>> watchTrucks() async* {
+    await _init();
+    yield List.unmodifiable(_trucks);
+    yield* _trucksController.stream;
   }
 
   @override
